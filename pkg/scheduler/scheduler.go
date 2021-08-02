@@ -558,6 +558,7 @@ func (sched *Scheduler) scheduleOne(ctx context.Context) {
 			klog.ErrorS(err, "Error selecting node for pod", "pod", klog.KObj(pod))
 			metrics.PodScheduleError(fwk.ProfileName(), metrics.SinceInSeconds(start))
 		}
+		// TODO
 		sched.recordSchedulingFailure(fwk, podInfo, err, v1.PodReasonUnschedulable, nominatedNode)
 		return
 	}
