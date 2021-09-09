@@ -152,12 +152,12 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 		// DisableFlagParsing=true provides the full set of flags passed to the kubelet in the
 		// `args` arg to Run, without Cobra's interference.
 		DisableFlagParsing: true,
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			// initial flag parse, since we disable cobra's flag parsing
 			if err := cleanFlagSet.Parse(args); err != nil {
 				klog.ErrorS(err, "Failed to parse kubelet flag")
 				cmd.Usage()
-				os.Exit(1)
+				return err
 			}
 
 			// check if there are non-flag arguments in the command line
@@ -165,18 +165,17 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			if len(cmds) > 0 {
 				klog.ErrorS(nil, "Unknown command", "command", cmds[0])
 				cmd.Usage()
-				os.Exit(1)
+				return fmt.Errorf("unknown command %+s", cmds[0])
 			}
 
 			// short-circuit on help
 			help, err := cleanFlagSet.GetBool("help")
 			if err != nil {
 				klog.InfoS(`"help" flag is non-bool, programmer error, please correct`)
-				os.Exit(1)
+				return err
 			}
 			if help {
-				cmd.Help()
-				return
+				return cmd.Help()
 			}
 
 			// short-circuit on verflag
@@ -186,13 +185,13 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			// set feature gates from initial flags-based config
 			if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(kubeletConfig.FeatureGates); err != nil {
 				klog.ErrorS(err, "Failed to set feature gates from initial flags-based config")
-				os.Exit(1)
+				return err
 			}
 
 			// validate the initial KubeletFlags
 			if err := options.ValidateKubeletFlags(kubeletFlags); err != nil {
 				klog.ErrorS(err, "Failed to validate kubelet flags")
-				os.Exit(1)
+				return err
 			}
 
 			if kubeletFlags.ContainerRuntime == "remote" && cleanFlagSet.Changed("pod-infra-container-image") {
@@ -204,19 +203,19 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 				kubeletConfig, err = loadConfigFile(configFile)
 				if err != nil {
 					klog.ErrorS(err, "Failed to load kubelet config file", "path", configFile)
-					os.Exit(1)
+					return err
 				}
 				// We must enforce flag precedence by re-parsing the command line into the new object.
 				// This is necessary to preserve backwards-compatibility across binary upgrades.
 				// See issue #56171 for more details.
 				if err := kubeletConfigFlagPrecedence(kubeletConfig, args); err != nil {
 					klog.ErrorS(err, "Failed to precedence kubeletConfigFlag")
-					os.Exit(1)
+					return err
 				}
 				// update feature gates based on new config
 				if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(kubeletConfig.FeatureGates); err != nil {
 					klog.ErrorS(err, "Failed to set feature gates from initial flags-based config")
-					os.Exit(1)
+					return err
 				}
 			}
 
@@ -224,7 +223,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			// This is the default "last-known-good" config for dynamic config, and must always remain valid.
 			if err := kubeletconfigvalidation.ValidateKubeletConfiguration(kubeletConfig); err != nil {
 				klog.ErrorS(err, "Failed to validate kubelet configuration", "path", kubeletConfig)
-				os.Exit(1)
+				return err
 			}
 
 			if (kubeletConfig.KubeletCgroups != "" && kubeletConfig.KubeReservedCgroup != "") && (strings.Index(kubeletConfig.KubeletCgroups, kubeletConfig.KubeReservedCgroup) != 0) {
@@ -245,7 +244,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 					})
 				if err != nil {
 					klog.ErrorS(err, "Failed to bootstrap a configuration controller", "dynamicConfigDir", dynamicConfigDir)
-					os.Exit(1)
+					return err
 				}
 				// If we should just use our existing, local config, the controller will return a nil config
 				if dynamicKubeletConfig != nil {
@@ -254,7 +253,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 					// by our above transform function. Now we simply update feature gates from the new config.
 					if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(kubeletConfig.FeatureGates); err != nil {
 						klog.ErrorS(err, "Failed to set feature gates from initial flags-based config")
-						os.Exit(1)
+						return err
 					}
 				}
 			}
@@ -269,7 +268,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			kubeletDeps, err := UnsecuredDependencies(kubeletServer, utilfeature.DefaultFeatureGate)
 			if err != nil {
 				klog.ErrorS(err, "Failed to construct kubelet dependencies")
-				os.Exit(1)
+				return err
 			}
 
 			// add the kubelet config controller to kubeletDeps
@@ -292,8 +291,10 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			// run the kubelet
 			if err := Run(ctx, kubeletServer, kubeletDeps, utilfeature.DefaultFeatureGate); err != nil {
 				klog.ErrorS(err, "Failed to run kubelet")
-				os.Exit(1)
+				return err
 			}
+
+			return nil
 		},
 	}
 
