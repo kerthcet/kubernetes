@@ -26,6 +26,7 @@ import (
 	"strings"
 
 	flag "github.com/spf13/pflag"
+	"k8s.io/klog/v2"
 )
 
 // FParseErrWhitelist configures Flag parse errors to be ignored
@@ -973,9 +974,11 @@ func (c *Command) ExecuteC() (cmd *Command, err error) {
 
 	err = cmd.execute(flags)
 	if err != nil {
+		klog.ErrorS(err, "starttttttttttttt")
 		// Always show help if requested, even if SilenceErrors is in
 		// effect
 		if err == flag.ErrHelp {
+			klog.ErrorS(err, "11111111111111")
 			cmd.HelpFunc()(cmd, args)
 			return cmd, nil
 		}
@@ -983,12 +986,14 @@ func (c *Command) ExecuteC() (cmd *Command, err error) {
 		// If root command has SilenceErrors flagged,
 		// all subcommands should respect it
 		if !cmd.SilenceErrors && !c.SilenceErrors {
+			klog.ErrorS(err, "22222222222222")
 			c.PrintErrln("Error:", err.Error())
 		}
 
 		// If root command has SilenceUsage flagged,
 		// all subcommands should respect it
 		if !cmd.SilenceUsage && !c.SilenceUsage {
+			klog.ErrorS(err, "3333333333333")
 			c.Println(cmd.UsageString())
 		}
 	}
