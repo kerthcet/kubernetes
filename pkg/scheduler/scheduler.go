@@ -223,6 +223,7 @@ func New(client clientset.Interface,
 	}
 
 	if options.applyDefaultProfile {
+		fmt.Println("..........................applyDefaultProfile")
 		var versionedCfg v1beta3.KubeSchedulerConfiguration
 		scheme.Scheme.Default(&versionedCfg)
 		cfg := config.KubeSchedulerConfiguration{}
