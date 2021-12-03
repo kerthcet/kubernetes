@@ -17,6 +17,8 @@ limitations under the License.
 package v1beta3
 
 import (
+	"fmt"
+
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
@@ -65,6 +67,7 @@ func pluginsNames(p *v1beta3.Plugins) []string {
 }
 
 func setDefaults_KubeSchedulerProfile(prof *v1beta3.KubeSchedulerProfile) {
+	fmt.Println("..................setDefaults")
 	// Set default plugins.
 	prof.Plugins = mergePlugins(getDefaultPlugins(), prof.Plugins)
 	// Set default plugin configs.

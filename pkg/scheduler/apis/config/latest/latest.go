@@ -17,6 +17,8 @@ limitations under the License.
 package latest
 
 import (
+	"fmt"
+
 	"k8s.io/component-base/config/v1alpha1"
 	"k8s.io/kube-scheduler/config/v1beta3"
 	"k8s.io/kubernetes/pkg/scheduler/apis/config"
@@ -26,6 +28,7 @@ import (
 // Default creates a default configuration of the latest versioned type.
 // This function needs to be updated whenever we bump the scheduler's component config version.
 func Default() (*config.KubeSchedulerConfiguration, error) {
+	fmt.Println("default")
 	versionedCfg := v1beta3.KubeSchedulerConfiguration{}
 	versionedCfg.DebuggingConfiguration = *v1alpha1.NewRecommendedDebuggingConfiguration()
 
