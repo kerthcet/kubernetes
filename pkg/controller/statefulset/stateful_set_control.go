@@ -452,6 +452,8 @@ func (ssc *defaultStatefulSetControl) updateStatefulSet(
 		// If we have a Pod that has been created but is not running and ready we can not make progress.
 		// We must ensure that all for each Pod, when we create it, all of its predecessors, with respect to its
 		// ordinal, are Running and Ready.
+
+		// TODO isRunningAndReady && monotonic && !enforced
 		if !isRunningAndReady(replicas[i]) && monotonic {
 			klog.V(4).InfoS("StatefulSet is waiting for Pod to be Running and Ready",
 				"statefulSet", klog.KObj(set), "pod", klog.KObj(replicas[i]))
@@ -460,6 +462,8 @@ func (ssc *defaultStatefulSetControl) updateStatefulSet(
 		// If we have a Pod that has been created but is not available we can not make progress.
 		// We must ensure that all for each Pod, when we create it, all of its predecessors, with respect to its
 		// ordinal, are Available.
+
+		// TODO isRunningAndAvailable && monotonic && !enforced
 		if !isRunningAndAvailable(replicas[i], set.Spec.MinReadySeconds) && monotonic {
 			klog.V(4).InfoS("StatefulSet is waiting for Pod to be Available",
 				"statefulSet", klog.KObj(set), "pod", klog.KObj(replicas[i]))
@@ -515,12 +519,16 @@ func (ssc *defaultStatefulSetControl) updateStatefulSet(
 			continue
 		}
 		// if we are in monotonic mode and the condemned target is not the first unhealthy Pod block
+
+		// TODO !isRunningAndReady(condemned[target]) && monotonic && condemned[target] != firstUnhealthyPod && !enforced
 		if !isRunningAndReady(condemned[target]) && monotonic && condemned[target] != firstUnhealthyPod {
 			klog.V(4).InfoS("StatefulSet is waiting for Pod to be Running and Ready prior to scale down",
 				"statefulSet", klog.KObj(set), "pod", klog.KObj(firstUnhealthyPod))
 			return &status, nil
 		}
 		// if we are in monotonic mode and the condemned target is not the first unhealthy Pod, block.
+
+		// TODO !isRunningAndAvailable(condemned[target], set.Spec.MinReadySeconds) && monotonic && condemned[target] != firstUnhealthyPod && !enforced
 		if !isRunningAndAvailable(condemned[target], set.Spec.MinReadySeconds) && monotonic && condemned[target] != firstUnhealthyPod {
 			klog.V(4).InfoS("StatefulSet is waiting for Pod to be Available prior to scale down",
 				"statefulSet", klog.KObj(set), "pod", klog.KObj(firstUnhealthyPod))
