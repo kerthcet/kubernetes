@@ -30,6 +30,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/pkg/controller/history"
 	"k8s.io/kubernetes/pkg/features"
+	"k8s.io/utils/pointer"
 )
 
 // StatefulSetControl implements the control logic for updating StatefulSets and their children Pods. It is implemented
@@ -250,13 +251,15 @@ func (ssc *defaultStatefulSetControl) getStatefulSetRevisions(
 
 // updateStatefulSet performs the update function for a StatefulSet. This method creates, updates, and deletes Pods in
 // the set in order to conform the system to the target state for the set. The target state always contains
-// set.Spec.Replicas Pods with a Ready Condition. If the UpdateStrategy.Type for the set is
-// RollingUpdateStatefulSetStrategyType then all Pods in the set must be at set.Status.CurrentRevision.
+// set.Spec.Replicas Pods with a Ready Condition.
+// If the UpdateStrategy.Type for the set is RollingUpdateStatefulSetStrategyType then all Pods in the set must be
+// at set.Status.CurrentRevision.
 // If the UpdateStrategy.Type for the set is OnDeleteStatefulSetStrategyType, the target state implies nothing about
-// the revisions of Pods in the set. If the UpdateStrategy.Type for the set is PartitionStatefulSetStrategyType, then
-// all Pods with ordinal less than UpdateStrategy.Partition.Ordinal must be at Status.CurrentRevision and all other
-// Pods must be at Status.UpdateRevision. If the returned error is nil, the returned StatefulSetStatus is valid and the
-// update must be recorded. If the error is not nil, the method should be retried until successful.
+// the revisions of Pods in the set.
+// If the UpdateStrategy.Type for the set is PartitionStatefulSetStrategyType, then all Pods with ordinal less than
+// UpdateStrategy.Partition.Ordinal must be at Status.CurrentRevision and all other Pods must be at Status.UpdateRevision.
+// If the returned error is nil, the returned StatefulSetStatus is valid and the update must be recorded.
+// If the error is not nil, the method should be retried until successful.
 func (ssc *defaultStatefulSetControl) updateStatefulSet(
 	ctx context.Context,
 	set *apps.StatefulSet,
@@ -264,6 +267,7 @@ func (ssc *defaultStatefulSetControl) updateStatefulSet(
 	updateRevision *apps.ControllerRevision,
 	collisionCount int32,
 	pods []*v1.Pod) (statefulSetStatus *apps.StatefulSetStatus, updateErr error) {
+
 	// get the current and update revisions of the set.
 	currentSet, err := ApplyRevision(set, currentRevision)
 	if err != nil {
@@ -279,8 +283,7 @@ func (ssc *defaultStatefulSetControl) updateStatefulSet(
 	status.ObservedGeneration = set.Generation
 	status.CurrentRevision = currentRevision.Name
 	status.UpdateRevision = updateRevision.Name
-	status.CollisionCount = new(int32)
-	*status.CollisionCount = collisionCount
+	status.CollisionCount = pointer.Int32(collisionCount)
 
 	replicaCount := int(*set.Spec.Replicas)
 	// slice that will contain all Pods such that 0 <= getOrdinal(pod) < set.Spec.Replicas
@@ -301,7 +304,6 @@ func (ssc *defaultStatefulSetControl) updateStatefulSet(
 			if isRunningAndAvailable(pods[i], set.Spec.MinReadySeconds) {
 				status.AvailableReplicas++
 			}
-
 		}
 
 		// count the number of current and update replicas
@@ -342,6 +344,12 @@ func (ssc *defaultStatefulSetControl) updateStatefulSet(
 		}
 	}()
 
+	// If the StatefulSet is being deleted, don't do anything other than updating
+	// status.
+	if set.DeletionTimestamp != nil {
+		return &status, nil
+	}
+
 	// for any empty indices in the sequence [0,set.Spec.Replicas) create a new Pod at the correct revision
 	for ord := 0; ord < replicaCount; ord++ {
 		if replicas[ord] == nil {
@@ -377,12 +385,6 @@ func (ssc *defaultStatefulSetControl) updateStatefulSet(
 
 	if unhealthy > 0 {
 		klog.V(4).InfoS("StatefulSet has unhealthy Pods", "statefulSet", klog.KObj(set), "unhealthyReplicas", unhealthy, "pod", klog.KObj(firstUnhealthyPod))
-	}
-
-	// If the StatefulSet is being deleted, don't do anything other than updating
-	// status.
-	if set.DeletionTimestamp != nil {
-		return &status, nil
 	}
 
 	monotonic := !allowsBurst(set)
