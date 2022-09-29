@@ -22,6 +22,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/kubernetes/pkg/scheduler/framework"
+	"k8s.io/kubernetes/pkg/util/parsers"
 )
 
 // Snapshot is a snapshot of cache NodeInfo and NodeTree order. The scheduler takes a
@@ -128,9 +129,10 @@ func getNodeImageStates(node *v1.Node, imageExistenceMap map[string]sets.String)
 
 	for _, image := range node.Status.Images {
 		for _, name := range image.Names {
-			imageStates[name] = &framework.ImageStateSummary{
+			familiarizeName := parsers.FamiliarizeDockerName(name)
+			imageStates[familiarizeName] = &framework.ImageStateSummary{
 				Size:     image.SizeBytes,
-				NumNodes: len(imageExistenceMap[name]),
+				NumNodes: len(imageExistenceMap[familiarizeName]),
 			}
 		}
 	}
@@ -143,10 +145,11 @@ func createImageExistenceMap(nodes []*v1.Node) map[string]sets.String {
 	for _, node := range nodes {
 		for _, image := range node.Status.Images {
 			for _, name := range image.Names {
-				if _, ok := imageExistenceMap[name]; !ok {
-					imageExistenceMap[name] = sets.NewString(node.Name)
+				familiarizeName := parsers.FamiliarizeDockerName(name)
+				if _, ok := imageExistenceMap[familiarizeName]; !ok {
+					imageExistenceMap[familiarizeName] = sets.NewString(node.Name)
 				} else {
-					imageExistenceMap[name].Insert(node.Name)
+					imageExistenceMap[familiarizeName].Insert(node.Name)
 				}
 			}
 		}

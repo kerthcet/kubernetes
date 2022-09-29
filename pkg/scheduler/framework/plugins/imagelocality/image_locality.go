@@ -114,10 +114,6 @@ func scaledImageScore(imageState *framework.ImageStateSummary, totalNumNodes int
 }
 
 // normalizedImageName returns the CRI compliant name for a given image.
-// TODO: cover the corner cases of missed matches, e.g,
-// 1. Using Docker as runtime and docker.io/library/test:tag in pod spec, but only test:tag will present in node status
-// 2. Using the implicit registry, i.e., test:tag or library/test:tag in pod spec but only docker.io/library/test:tag
-// in node status; note that if users consistently use one registry format, this should not happen.
 func normalizedImageName(name string) string {
 	if strings.LastIndex(name, ":") <= strings.LastIndex(name, "/") {
 		name = name + ":latest"

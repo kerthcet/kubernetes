@@ -25,8 +25,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
+
 	"k8s.io/kubernetes/pkg/scheduler/framework"
 	"k8s.io/kubernetes/pkg/scheduler/metrics"
+	"k8s.io/kubernetes/pkg/util/parsers"
 )
 
 var (
@@ -684,20 +686,21 @@ func (cache *cacheImpl) addNodeImageStates(node *v1.Node, nodeInfo *framework.No
 
 	for _, image := range node.Status.Images {
 		for _, name := range image.Names {
+			familiarizeName := parsers.FamiliarizeDockerName(name)
 			// update the entry in imageStates
-			state, ok := cache.imageStates[name]
+			state, ok := cache.imageStates[familiarizeName]
 			if !ok {
 				state = &imageState{
 					size:  image.SizeBytes,
 					nodes: sets.NewString(node.Name),
 				}
-				cache.imageStates[name] = state
+				cache.imageStates[familiarizeName] = state
 			} else {
 				state.nodes.Insert(node.Name)
 			}
 			// create the imageStateSummary for this image
-			if _, ok := newSum[name]; !ok {
-				newSum[name] = cache.createImageStateSummary(state)
+			if _, ok := newSum[familiarizeName]; !ok {
+				newSum[familiarizeName] = cache.createImageStateSummary(state)
 			}
 		}
 	}
@@ -714,14 +717,15 @@ func (cache *cacheImpl) removeNodeImageStates(node *v1.Node) {
 
 	for _, image := range node.Status.Images {
 		for _, name := range image.Names {
-			state, ok := cache.imageStates[name]
+			familiarizeName := parsers.FamiliarizeDockerName(name)
+			state, ok := cache.imageStates[familiarizeName]
 			if ok {
 				state.nodes.Delete(node.Name)
 				if len(state.nodes) == 0 {
 					// Remove the unused image to make sure the length of
 					// imageStates represents the total number of different
 					// images on all nodes
-					delete(cache.imageStates, name)
+					delete(cache.imageStates, familiarizeName)
 				}
 			}
 		}

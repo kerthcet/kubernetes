@@ -18,12 +18,20 @@ package parsers
 
 import (
 	"fmt"
+	"strings"
+
 	//  Import the crypto sha256 algorithm for the docker image parser to work
 	_ "crypto/sha256"
 	//  Import the crypto/sha512 algorithm for the docker image parser to work with 384 and 512 sha hashes
 	_ "crypto/sha512"
 
 	dockerref "github.com/docker/distribution/reference"
+)
+
+const (
+	defaultDomain    = "docker.io"
+	officialRepoName = "library"
+	defaultTag       = "latest"
 )
 
 // ParseImageName parses a docker image string into three parts: repo, tag and digest.
@@ -51,4 +59,23 @@ func ParseImageName(image string) (string, string, string, error) {
 		tag = "latest"
 	}
 	return repoToPull, tag, digest, nil
+}
+
+// FamiliarizeDockerName returns a shortened version of the name familiar
+// to to the Docker UI. Familiar names have the default domain
+// "docker.io" and "library/" repository prefix removed.
+// For example, "docker.io/library/redis" will have the familiar
+// name "redis" and "docker.io/dmcgowan/myapp" will be "dmcgowan/myapp".
+// Returns a familiarized named only reference.
+func FamiliarizeDockerName(name string) string {
+	substrings := strings.SplitN(name, "/", 2)
+	if substrings[0] == defaultDomain && len(substrings) == 2 {
+		// Handle official repositories which have the pattern "library/<repo name>"
+		split := strings.SplitN(substrings[1], "/", 2)
+		if split[0] == officialRepoName && len(split) == 2 {
+			return split[1]
+		}
+		return substrings[1]
+	}
+	return name
 }

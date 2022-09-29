@@ -49,3 +49,48 @@ func TestParseImageName(t *testing.T) {
 		}
 	}
 }
+
+func TestFamiliarizeDockerName(t *testing.T) {
+	testCases := []struct {
+		name          string
+		imageName     string
+		wantImageName string
+	}{
+		{
+			name:          "normal case",
+			imageName:     "docker.io/library/root:latest",
+			wantImageName: "root:latest",
+		},
+		{
+			name:          "normal case with no official repo name",
+			imageName:     "docker.io/myrepo/root:latest",
+			wantImageName: "myrepo/root:latest",
+		},
+		{
+			name:          "normal case with no docker domain name",
+			imageName:     "myrepo/root:latest",
+			wantImageName: "myrepo/root:latest",
+		},
+		{
+			name:          "only docker domain name",
+			imageName:     "docker.io",
+			wantImageName: "docker.io",
+		},
+		{
+			name:          "only domain and official repo name",
+			imageName:     "docker.io/library",
+			wantImageName: "library",
+		},
+		{
+			name:          "multi repo names",
+			imageName:     "docker.io/library/myrepo/root:latest",
+			wantImageName: "myrepo/root:latest",
+		},
+	}
+
+	for _, tc := range testCases {
+		if got := FamiliarizeDockerName(tc.imageName); got != tc.wantImageName {
+			t.Errorf("Unexpected result with %v, want: %v, got: %v", tc.name, tc.wantImageName, got)
+		}
+	}
+}
