@@ -141,10 +141,11 @@ func (pl *InterPodAffinity) PreScore(
 	affinity := pod.Spec.Affinity
 	hasPreferredAffinityConstraints := affinity != nil && affinity.PodAffinity != nil && len(affinity.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution) > 0
 	hasPreferredAntiAffinityConstraints := affinity != nil && affinity.PodAntiAffinity != nil && len(affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution) > 0
+	hasPreferredConstraints := hasPreferredAffinityConstraints || hasPreferredAntiAffinityConstraints
 
 	// Optionally ignore calculating preferences of existing pods' affinity rules
 	// if the incoming pod has no inter-pod affinities.
-	if pl.args.IgnorePreferredTermsOfExistingPods && !hasPreferredAffinityConstraints && !hasPreferredAntiAffinityConstraints {
+	if pl.args.IgnorePreferredTermsOfExistingPods && !hasPreferredConstraints {
 		cycleState.Write(preScoreStateKey, &preScoreState{
 			topologyScore: make(map[string]map[string]int64),
 		})
@@ -155,7 +156,7 @@ func (pl *InterPodAffinity) PreScore(
 	// need to process nodes hosting pods with affinity.
 	var allNodes []*framework.NodeInfo
 	var err error
-	if hasPreferredAffinityConstraints || hasPreferredAntiAffinityConstraints {
+	if hasPreferredConstraints {
 		allNodes, err = pl.sharedLister.NodeInfos().List()
 		if err != nil {
 			return framework.AsStatus(fmt.Errorf("failed to get all nodes from shared lister: %w", err))
@@ -198,7 +199,7 @@ func (pl *InterPodAffinity) PreScore(
 		// Unless the pod being scheduled has preferred affinity terms, we only
 		// need to process pods with affinity in the node.
 		podsToProcess := nodeInfo.PodsWithAffinity
-		if hasPreferredAffinityConstraints || hasPreferredAntiAffinityConstraints {
+		if hasPreferredConstraints {
 			// We need to process all the pods.
 			podsToProcess = nodeInfo.Pods
 		}
