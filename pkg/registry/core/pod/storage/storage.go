@@ -245,6 +245,7 @@ func (r *BindingREST) setPodHostAndAnnotations(ctx context.Context, podUID types
 			Type:   api.PodScheduled,
 			Status: api.ConditionTrue,
 		})
+		fmt.Println(">>>>>>>>> podName", pod.Name)
 		finalPod = pod
 		return pod, nil
 	}), dryRun, nil)

@@ -511,6 +511,14 @@ func TestRequeueByBindFailure(t *testing.T) {
 	if fakeBind.counter != 1 {
 		t.Fatalf("Expect pod-1 to be scheduled by the bind plugin in the second binding try: %v", err)
 	}
+
+	time.Sleep(100 * time.Second)
+	err = wait.PollUntilContextTimeout(ctx, 200*time.Millisecond, wait.ForeverTestTimeout, false, testutils.PodSchedulingError(cs, ns, pod.Name))
+	newPod, err := cs.CoreV1().Pods(ns).Get(ctx, pod.Name, metav1.GetOptions{})
+	fmt.Println(">>>>>>>>>>>>> podStatus", newPod.Status)
+	if err != nil {
+		t.Fatalf("Expect pod-1 to be rejected by the bind plugin: %v", err)
+	}
 }
 
 // firstFailBindPlugin rejects the Pod in the first Bind call.
