@@ -439,33 +439,32 @@ func getScoreWeights(f *frameworkImpl, pluginsMap map[string]framework.Plugin, p
 }
 
 type orderedSet struct {
-	set         map[string]int
-	list        []string
-	deletionCnt int
+	list []string
 }
 
 func newOrderedSet() *orderedSet {
-	return &orderedSet{set: make(map[string]int)}
+	return &orderedSet{}
 }
 
 func (os *orderedSet) insert(s string) {
-	if os.has(s) {
+	if ok, _ := os.has(s); ok {
 		return
 	}
-	os.set[s] = len(os.list)
 	os.list = append(os.list, s)
 }
 
-func (os *orderedSet) has(s string) bool {
-	_, found := os.set[s]
-	return found
+func (os *orderedSet) has(s string) (bool, int) {
+	for i := range os.list {
+		if os.list[i] == s {
+			return true, i
+		}
+	}
+	return false, -1
 }
 
 func (os *orderedSet) delete(s string) {
-	if i, found := os.set[s]; found {
-		delete(os.set, s)
-		os.list = append(os.list[:i-os.deletionCnt], os.list[i+1-os.deletionCnt:]...)
-		os.deletionCnt++
+	if ok, index := os.has(s); ok {
+		os.list = append(os.list[:index], os.list[index+1:]...)
 	}
 }
 
@@ -515,7 +514,7 @@ func (f *frameworkImpl) expandMultiPointPlugins(logger klog.Logger, profile *con
 			// the user intent is to override the default plugin or make some other explicit setting.
 			// Either way, discard the MultiPoint value for this plugin.
 			// This maintains expected behavior for overriding default plugins (see https://github.com/kubernetes/kubernetes/pull/99582)
-			if enabledSet.has(ep.Name) {
+			if ok, _ := enabledSet.has(ep.Name); ok {
 				overridePlugins.insert(ep.Name)
 				logger.Info("MultiPoint plugin is explicitly re-configured; overriding", "plugin", ep.Name)
 				continue
@@ -523,7 +522,7 @@ func (f *frameworkImpl) expandMultiPointPlugins(logger klog.Logger, profile *con
 
 			// if this plugin is already registered via MultiPoint, then this is
 			// a double registration and an error in the config.
-			if multiPointEnabled.has(ep.Name) {
+			if ok, _ := multiPointEnabled.has(ep.Name); ok {
 				return fmt.Errorf("plugin %q already registered as %q", ep.Name, pluginType.Name())
 			}
 
@@ -538,7 +537,7 @@ func (f *frameworkImpl) expandMultiPointPlugins(logger klog.Logger, profile *con
 		newPlugins := reflect.New(reflect.TypeOf(e.slicePtr).Elem()).Elem()
 		// part 1
 		for _, name := range slice.CopyStrings(enabledSet.list) {
-			if overridePlugins.has(name) {
+			if ok, _ := overridePlugins.has(name); ok {
 				newPlugins = reflect.Append(newPlugins, reflect.ValueOf(pluginsMap[name]))
 				enabledSet.delete(name)
 			}
