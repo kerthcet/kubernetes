@@ -712,6 +712,9 @@ func (f *frameworkImpl) RunPreFilterPlugins(ctx context.Context, state *framewor
 		}
 		if !s.IsSuccess() {
 			s.SetPlugin(pl.Name())
+			if s.Code() == framework.Pending {
+				return nil, s
+			}
 			if s.Code() == framework.UnschedulableAndUnresolvable {
 				// In this case, the preemption shouldn't happen in this scheduling cycle.
 				// So, no need to execute all PreFilter.

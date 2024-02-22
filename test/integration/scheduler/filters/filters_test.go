@@ -2042,10 +2042,61 @@ func TestUnschedulablePodBecomesSchedulable(t *testing.T) {
 				return deletePod(cs, "pod-to-be-deleted", ns)
 			},
 		},
+		{
+			name: "pod get scheduled when requested pvc created",
+			init: func(cs kubernetes.Interface, ns string) error {
+				nodeObject := st.MakeNode().Name("node-scheduler-integration-test").Capacity(map[v1.ResourceName]string{v1.ResourcePods: "1"}).Obj()
+				_, err := createNode(cs, nodeObject)
+				if err != nil {
+					return fmt.Errorf("cannot create node: %v", err)
+				}
+				storage := v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}
+				volType := v1.HostPathDirectoryOrCreate
+				_, err = testutils.CreatePV(cs, st.MakePersistentVolume().
+					Name("volume").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOnce}).
+					Capacity(storage.Requests).
+					HostPathVolumeSource(&v1.HostPathVolumeSource{Path: "/mnt", Type: &volType}).
+					Obj())
+				if err != nil {
+					return fmt.Errorf("cannot create pv: %v", err)
+				}
+				return nil
+			},
+			pod: &testutils.PausePodConfig{
+				Name: "pod-1",
+				Volumes: []v1.Volume{
+					{
+						Name: "volume",
+						VolumeSource: v1.VolumeSource{
+							PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+								ClaimName: "pvc",
+							},
+						},
+					},
+				},
+			},
+			update: func(cs kubernetes.Interface, ns string) error {
+				storage := v1.VolumeResourceRequirements{Requests: v1.ResourceList{v1.ResourceStorage: resource.MustParse("1Mi")}}
+				_, err := testutils.CreatePVC(cs, st.MakePersistentVolumeClaim().
+					Name("pvc").
+					Namespace(ns).
+					// Annotation and volume name required for PVC to be considered bound.
+					Annotation(volume.AnnBindCompleted, "true").
+					VolumeName("volume").
+					AccessModes([]v1.PersistentVolumeAccessMode{v1.ReadWriteOncePod}).
+					Resources(storage).
+					Obj())
+				if err != nil {
+					return fmt.Errorf("cannot create pvc: %v", err)
+				}
+				return nil
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			testCtx := initTest(t, "scheduler-informer")
+			testCtx := initTest(t, "scheduler")
 
 			if tt.init != nil {
 				if err := tt.init(testCtx.ClientSet, testCtx.NS.Name); err != nil {

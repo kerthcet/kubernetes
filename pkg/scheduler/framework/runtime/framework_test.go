@@ -1693,6 +1693,22 @@ func TestRunPreFilterPlugins(t *testing.T) {
 			wantSkippedPlugins:  sets.New[string](), // "skip" plugin isn't executed.
 			wantStatusCode:      framework.UnschedulableAndUnresolvable,
 		},
+		{
+			name: "one PreFilter plugin returned Pending, and all other plugins aren't executed",
+			plugins: []*TestPlugin{
+				{
+					name: "pending",
+					inj:  injectedResult{PreFilterStatus: int(framework.Pending)},
+				},
+				{
+					// to make sure this plugin is not executed, this plugin return Skip and we confirm it via wantSkippedPlugins.
+					name: "skip",
+					inj:  injectedResult{PreFilterStatus: int(framework.Skip)},
+				},
+			},
+			wantPreFilterResult: nil,
+			wantStatusCode:      framework.Pending,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -171,7 +171,7 @@ func (pl *VolumeRestrictions) PreFilter(ctx context.Context, cycleState *framewo
 	pvcs, err := pl.readWriteOncePodPVCsForPod(ctx, pod)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return nil, framework.NewStatus(framework.UnschedulableAndUnresolvable, err.Error())
+			return nil, framework.NewStatus(framework.Pending, "waiting for PVC")
 		}
 		return nil, framework.AsStatus(err)
 	}
