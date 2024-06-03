@@ -703,7 +703,8 @@ type Handle interface {
 	SharedInformerFactory() informers.SharedInformerFactory
 
 	// ResourceClaimInfos returns an assume cache of ResourceClaim objects
-	// which gets populated by the shared informer factory.
+	// which gets populated by the shared informer factory and the dynamic resources
+	// plugin.
 	ResourceClaimCache() *assumecache.AssumeCache
 
 	// RunFilterPluginsWithNominatedPods runs the set of configured filter plugins for nominated pod on the given node.
