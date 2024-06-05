@@ -495,7 +495,7 @@ func TestAddAllEventHandlers(t *testing.T) {
 			var resourceClaimCache *assumecache.AssumeCache
 			if utilfeature.DefaultFeatureGate.Enabled(features.DynamicResourceAllocation) {
 				resourceClaimInformer := informerFactory.Resource().V1alpha2().ResourceClaims().Informer()
-				resourceClaimCache = assumecache.NewAssumeCache(logger, resourceClaimInformer, "ResourceClaim", "", nil)
+				resourceClaimCache = assumecache.NewAssumeCache(ctx, logger, resourceClaimInformer, "ResourceClaim", "", nil)
 			}
 
 			if err := addAllEventHandlers(&testSched, informerFactory, dynInformerFactory, resourceClaimCache, tt.gvkMap); err != nil {

@@ -17,6 +17,7 @@ limitations under the License.
 package volumebinding
 
 import (
+	"context"
 	"fmt"
 
 	"k8s.io/klog/v2"
@@ -43,7 +44,7 @@ func pvStorageClassIndexFunc(obj interface{}) ([]string, error) {
 func NewPVAssumeCache(logger klog.Logger, informer assumecache.Informer) *PVAssumeCache {
 	logger = klog.LoggerWithName(logger, "PV Cache")
 	return &PVAssumeCache{
-		AssumeCache: assumecache.NewAssumeCache(logger, informer, "v1.PersistentVolume", "storageclass", pvStorageClassIndexFunc),
+		AssumeCache: assumecache.NewAssumeCache(context.Background(), logger, informer, "v1.PersistentVolume", "storageclass", pvStorageClassIndexFunc),
 		logger:      logger,
 	}
 }
@@ -101,7 +102,7 @@ type PVCAssumeCache struct {
 func NewPVCAssumeCache(logger klog.Logger, informer assumecache.Informer) *PVCAssumeCache {
 	logger = klog.LoggerWithName(logger, "PVC Cache")
 	return &PVCAssumeCache{
-		AssumeCache: assumecache.NewAssumeCache(logger, informer, "v1.PersistentVolumeClaim", "", nil),
+		AssumeCache: assumecache.NewAssumeCache(context.Background(), logger, informer, "v1.PersistentVolumeClaim", "", nil),
 		logger:      logger,
 	}
 }

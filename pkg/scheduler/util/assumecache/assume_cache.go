@@ -17,6 +17,7 @@ limitations under the License.
 package assumecache
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strconv"
@@ -25,7 +26,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"k8s.io/apimachinery/pkg/api/meta"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/kubernetes/pkg/scheduler/util/queue"
 )
@@ -146,7 +146,9 @@ type AssumeCache struct {
 	// which tries to lock the rwMutex). Writing into such a channel
 	// while not holding the rwMutex doesn't work because in-order delivery
 	// of events would no longer be guaranteed.
-	eventQueue queue.FIFO[func()]
+	eventQueue queue.FIFO[event]
+
+	cond *sync.Cond
 
 	// describes the object stored
 	description string
@@ -170,6 +172,16 @@ type objInfo struct {
 	apiObj interface{}
 }
 
+type event struct {
+	// FIXME: No need I think since we can tell from the runtime.
+	What   string
+	OldObj interface{}
+	// FIXME: Rename to NewObj is better.
+	Obj interface{}
+	// FIXME: No longer need this since we'll not wait for the handlers to sync.
+	InitialList bool
+}
+
 func objInfoKeyFunc(obj interface{}) (string, error) {
 	objInfo, ok := obj.(*objInfo)
 	if !ok {
@@ -187,7 +199,7 @@ func (c *AssumeCache) objInfoIndexFunc(obj interface{}) ([]string, error) {
 }
 
 // NewAssumeCache creates an assume cache for general objects.
-func NewAssumeCache(logger klog.Logger, informer Informer, description, indexName string, indexFunc cache.IndexFunc) *AssumeCache {
+func NewAssumeCache(ctx context.Context, logger klog.Logger, informer Informer, description, indexName string, indexFunc cache.IndexFunc) *AssumeCache {
 	c := &AssumeCache{
 		logger:      logger,
 		description: description,
@@ -200,6 +212,8 @@ func NewAssumeCache(logger klog.Logger, informer Informer, description, indexNam
 	}
 	c.store = cache.NewIndexer(objInfoKeyFunc, indexers)
 
+	c.cond = sync.NewCond(&c.rwMutex)
+
 	// Unit tests don't use informers
 	if informer != nil {
 		// Cannot fail in practice?! No-one bothers checking the error.
@@ -210,6 +224,7 @@ func NewAssumeCache(logger klog.Logger, informer Informer, description, indexNam
 				DeleteFunc: c.delete,
 			},
 		)
+		go c.consumeEvents(ctx)
 	}
 	return c
 }
@@ -225,7 +240,6 @@ func (c *AssumeCache) add(obj interface{}) {
 		return
 	}
 
-	defer c.emitEvents()
 	c.rwMutex.Lock()
 	defer c.rwMutex.Unlock()
 
@@ -255,21 +269,13 @@ func (c *AssumeCache) add(obj interface{}) {
 	objInfo := &objInfo{name: name, latestObj: obj, apiObj: obj}
 	if err = c.store.Update(objInfo); err != nil {
 		c.logger.Info("Error occurred while updating stored object", "err", err)
-	} else {
-		c.logger.V(10).Info("Adding object to assume cache", "description", c.description, "cacheKey", name, "assumeCache", obj)
-		for _, handler := range c.eventHandlers {
-			handler := handler
-			if oldObj == nil {
-				c.eventQueue.Push(func() {
-					handler.OnAdd(obj, false)
-				})
-			} else {
-				c.eventQueue.Push(func() {
-					handler.OnUpdate(oldObj, obj)
-				})
-			}
-		}
+		return
 	}
+
+	c.logger.V(4).Info("Adding object to assume cache", "description", c.description, "cacheKey", name, "assumeCache", obj)
+
+	c.eventQueue.Push(event{OldObj: oldObj, Obj: obj})
+	c.cond.Broadcast()
 }
 
 func (c *AssumeCache) update(oldObj interface{}, newObj interface{}) {
@@ -287,7 +293,6 @@ func (c *AssumeCache) delete(obj interface{}) {
 		return
 	}
 
-	defer c.emitEvents()
 	c.rwMutex.Lock()
 	defer c.rwMutex.Unlock()
 
@@ -304,12 +309,8 @@ func (c *AssumeCache) delete(obj interface{}) {
 		c.logger.Error(err, "Failed to delete", "description", c.description, "cacheKey", name)
 	}
 
-	for _, handler := range c.eventHandlers {
-		handler := handler
-		c.eventQueue.Push(func() {
-			handler.OnDelete(oldObj)
-		})
-	}
+	c.eventQueue.Push(event{OldObj: oldObj, Obj: nil})
+	c.cond.Broadcast()
 }
 
 func (c *AssumeCache) getObjVersion(name string, obj interface{}) (int64, error) {
@@ -418,7 +419,7 @@ func (c *AssumeCache) Assume(obj interface{}) error {
 		return &ObjectNameError{err}
 	}
 
-	defer c.emitEvents()
+	// defer c.emitEvents()
 	c.rwMutex.Lock()
 	defer c.rwMutex.Unlock()
 
@@ -441,13 +442,9 @@ func (c *AssumeCache) Assume(obj interface{}) error {
 		return fmt.Errorf("%v %q is out of sync (stored: %d, assume: %d)", c.description, name, storedVersion, newVersion)
 	}
 
-	for _, handler := range c.eventHandlers {
-		handler := handler
-		oldObj := objInfo.latestObj
-		c.eventQueue.Push(func() {
-			handler.OnUpdate(oldObj, obj)
-		})
-	}
+	oldObj := objInfo.latestObj
+	c.eventQueue.Push(event{OldObj: oldObj, Obj: obj})
+	c.cond.Broadcast()
 
 	// Only update the cached object
 	objInfo.latestObj = obj
@@ -457,7 +454,6 @@ func (c *AssumeCache) Assume(obj interface{}) error {
 
 // Restore the informer cache's version of the object.
 func (c *AssumeCache) Restore(objName string) {
-	defer c.emitEvents()
 	c.rwMutex.Lock()
 	defer c.rwMutex.Unlock()
 
@@ -467,13 +463,10 @@ func (c *AssumeCache) Restore(objName string) {
 		c.logger.V(5).Info("Restore object", "description", c.description, "cacheKey", objName, "err", err)
 	} else {
 		if objInfo.latestObj != objInfo.apiObj {
-			for _, handler := range c.eventHandlers {
-				handler := handler
-				oldObj, obj := objInfo.latestObj, objInfo.apiObj
-				c.eventQueue.Push(func() {
-					handler.OnUpdate(oldObj, obj)
-				})
-			}
+			oldObj, obj := objInfo.latestObj, objInfo.apiObj
+
+			c.eventQueue.Push(event{OldObj: oldObj, Obj: obj})
+			c.cond.Broadcast()
 
 			objInfo.latestObj = objInfo.apiObj
 		}
@@ -486,33 +479,49 @@ func (c *AssumeCache) Restore(objName string) {
 // coordination between different handlers. A handler may use the
 // cache.
 func (c *AssumeCache) AddEventHandler(handler cache.ResourceEventHandler) {
-	defer c.emitEvents()
-	c.rwMutex.Lock()
-	defer c.rwMutex.Unlock()
-
 	c.eventHandlers = append(c.eventHandlers, handler)
-	allObjs := c.listLocked(nil)
-	for _, obj := range allObjs {
-		c.eventQueue.Push(func() {
-			handler.OnAdd(obj, true)
-		})
-	}
 }
 
 // emitEvents delivers all pending events that are in the queue, in the order
 // in which they were stored there (FIFO).
-func (c *AssumeCache) emitEvents() {
+func (c *AssumeCache) consumeEvents(ctx context.Context) {
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			// Nothing
+		}
+
 		c.rwMutex.Lock()
-		deliver, ok := c.eventQueue.Pop()
+		event, ok := c.eventQueue.Pop()
+		if !ok {
+			c.cond.Wait()
+		}
 		c.rwMutex.Unlock()
 
-		if !ok {
-			return
+		var action string
+		switch {
+		case event.OldObj == nil && event.Obj != nil:
+			action = "add"
+		case event.OldObj != nil && event.Obj != nil:
+			action = "update"
+		case event.OldObj != nil && event.Obj == nil:
+			action = "delete"
+		default:
+			continue
 		}
-		func() {
-			defer utilruntime.HandleCrash()
-			deliver()
-		}()
+
+		for _, handler := range c.eventHandlers {
+			handler := handler
+			switch action {
+			case "add":
+				handler.OnAdd(event.Obj, false)
+			case "update":
+				handler.OnUpdate(event.OldObj, event.Obj)
+			case "delete":
+				handler.OnDelete(event.OldObj)
+			}
+		}
 	}
 }
