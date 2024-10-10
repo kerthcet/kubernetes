@@ -1513,12 +1513,14 @@ func runWorkload(tCtx ktesting.TContext, tc *testCase, w *workload, informerFact
 
 				churnFns = append(churnFns, func(name string) string {
 					if name != "" {
+						fmt.Println(">>>>>>>>> delete resource: ", name)
 						if err := dynRes.Delete(tCtx, name, metav1.DeleteOptions{}); err != nil && !errors.Is(err, context.Canceled) {
 							tCtx.Errorf("op %d: unable to delete %v: %v", opIndex, name, err)
 						}
 						return ""
 					}
 
+					fmt.Println(">>>>>>>>>>> crate resources")
 					live, err := dynRes.Create(tCtx, unstructuredObj, metav1.CreateOptions{})
 					if err != nil {
 						return ""
